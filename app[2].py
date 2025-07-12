@@ -11,26 +11,36 @@ nltk.download('stopwords')
 # ---------------- Page Setup ---------------- #
 st.set_page_config(page_title="Fake Review Detector", page_icon="🔍", layout="centered")
 
-st.markdown("""
+# Background image URL (change this to your own if needed)
+background_url = "https://images.unsplash.com/photo-1581093588401-12cbf1b01956?auto=format&fit=crop&w=1050&q=80"
+
+# ---------------- Custom CSS ---------------- #
+st.markdown(f"""
     <style>
-        .main {background-color: #f5f7fa;}
-        .stButton > button {
-            background-color: #0073e6;
-            color: white;
-            font-weight: bold;
-            border-radius: 8px;
-            padding: 0.6em 1.2em;
-        }
-        .stTextArea > div > textarea {
-            font-size: 16px;
-        }
-        .reportview-container .main .block-container{
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-        }
-        h1, h2, h3, h4 {
-            color: #004080;
-        }
+    .stApp {{
+        background-image: url("{background_url}");
+        background-size: cover;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+    }}
+    .main {{
+        background-color: rgba(255, 255, 255, 0.85);
+        padding: 2rem;
+        border-radius: 10px;
+    }}
+    .stButton > button {{
+        background-color: #0073e6;
+        color: white;
+        font-weight: bold;
+        border-radius: 8px;
+        padding: 0.6em 1.2em;
+    }}
+    .stTextArea > div > textarea {{
+        font-size: 16px;
+    }}
+    h1, h2, h3 {{
+        color: #003366;
+    }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -40,7 +50,6 @@ vectorizer = pickle.load(open("vectorizer.pkl", "rb"))
 
 # ---------------- Text Preprocessor ---------------- #
 def clean_text(text):
-    # Minimal cleaning for better match with training vectorizer
     text = re.sub(r'[^a-zA-Z]', ' ', text.lower())
     return text
 
@@ -92,36 +101,35 @@ else:
             result = model.predict(vec)[0]
             proba = model.predict_proba(vec)[0]
 
-            prediction = "✅ Genuine Review" if result == 1 else "⚠️ Fake Review"
+            # FIXED label mapping
+            prediction = "✅ Genuine Review" if result == 0 else "⚠️ Fake Review"
             confidence = f"{np.max(proba)*100:.2f}%"
 
-            # Display result
             st.markdown(f"### 🎯 Prediction: {prediction}")
             st.markdown(f"**🧠 Confidence Score:** `{confidence}`")
-            st.bar_chart({"Genuine": proba[1], "Fake": proba[0]})
+            st.bar_chart({"Genuine": proba[0], "Fake": proba[1]})
 
-            # Save to session history
             new_row = {"Review": input_text, "Prediction": prediction, "Confidence": confidence}
             st.session_state['history'] = pd.concat(
                 [st.session_state['history'], pd.DataFrame([new_row])],
                 ignore_index=True
             )
 
-    # ---------------- Test Examples for Validation ---------------- #
+    # ---------------- Sample Inputs ---------------- #
     with st.expander("🧪 Try Sample Reviews"):
         test_reviews = [
-            "This product is excellent! Totally worth it.",
-            "Awful experience. Would never recommend this.",
-            "Genuine service and quick delivery. Impressed!",
-            "Best product I've ever used. Highly recommended.",
-            "This review is fake and generated. Don’t trust it."
+            "Absolutely terrible product. Worst I’ve used.",
+            "Great product, very useful. Loved it!",
+            "Fake review. Totally not real at all.",
+            "This is genuine. I actually bought and used it.",
+            "Highly recommended. Excellent quality!"
         ]
         for rev in test_reviews:
             cleaned = clean_text(rev)
             vec = vectorizer.transform([cleaned])
             result = model.predict(vec)[0]
             proba = model.predict_proba(vec)[0]
-            pred = "✅ Genuine" if result == 1 else "⚠️ Fake"
+            pred = "✅ Genuine" if result == 0 else "⚠️ Fake"
             st.markdown(f"**Review:** {rev}")
             st.markdown(f"Prediction: `{pred}` | Confidence: `{np.max(proba)*100:.2f}%`")
             st.progress(float(np.max(proba)))
