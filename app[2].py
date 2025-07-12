@@ -11,7 +11,7 @@ nltk.download('stopwords')
 # ---------------- Page Setup ---------------- #
 st.set_page_config(page_title="Fake Review Detector", page_icon="🔍", layout="centered")
 
-# Background image URL (change this to your own if needed)
+# Background image URL (update if needed)
 background_url = "https://images.unsplash.com/photo-1581093588401-12cbf1b01956?auto=format&fit=crop&w=1050&q=80"
 
 # ---------------- Custom CSS ---------------- #
@@ -101,7 +101,7 @@ else:
             result = model.predict(vec)[0]
             proba = model.predict_proba(vec)[0]
 
-            # FIXED label mapping
+            # Fix label mapping (0 = genuine, 1 = fake)
             prediction = "✅ Genuine Review" if result == 0 else "⚠️ Fake Review"
             confidence = f"{np.max(proba)*100:.2f}%"
 
