@@ -1,72 +1,98 @@
 import streamlit as st
-import pandas as pd
+import pickle
+import re
+from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer
 import numpy as np
-from datetime import datetime
-from transformers import pipeline
-import hashlib
+import pandas as pd
 
-# Set up page
-st.set_page_config(page_title="Fake Review Detector (BERT)", page_icon="🔍")
+# ---------------- Page Setup ---------------- #
+st.set_page_config(page_title="Fake Review Detector", page_icon="🔍", layout="centered")
 
-# Load BERT pipeline
-@st.cache_resource
-def load_model():
-    return pipeline("text-classification", model="mrm8488/bert-tiny-finetuned-fake-news-detection")
+st.markdown("""
+    <style>
+        .main {background-color: #f7f9fc;}
+        .stButton > button {
+            background-color: #0073e6;
+            color: white;
+            font-weight: bold;
+            border-radius: 8px;
+            padding: 0.6em 1.2em;
+        }
+        .stTextArea > div > textarea {
+            font-size: 16px;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
-classifier = load_model()
+# ---------------- Load Model ---------------- #
+model = pickle.load(open("model.pkl", "rb"))
+vectorizer = pickle.load(open("vectorizer.pkl", "rb"))
 
-# Hashed password check
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+# ---------------- Text Cleaner ---------------- #
+def clean_text(text):
+    text = re.sub(r'[^a-zA-Z]', ' ', text.lower())
+    tokens = text.split()
+    ps = PorterStemmer()
+    tokens = [ps.stem(word) for word in tokens if word not in stopwords.words('english')]
+    return ' '.join(tokens)
 
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD_HASH = "e99a18c428cb38d5f260853678922e03"  # hash for 'admin123'
+# ---------------- Session State Init ---------------- #
+if 'admin_logged_in' not in st.session_state:
+    st.session_state['admin_logged_in'] = False
+if 'history' not in st.session_state:
+    st.session_state['history'] = pd.DataFrame(columns=["Review", "Prediction", "Confidence"])
 
-# Sidebar login
-st.sidebar.title("Login")
-username = st.sidebar.text_input("Username")
-password = st.sidebar.text_input("Password", type="password")
-admin_logged_in = username == ADMIN_USERNAME and hash_password(password) == ADMIN_PASSWORD_HASH
+# ---------------- Sidebar Login ---------------- #
+with st.sidebar:
+    st.title("🔐 Admin Login")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        if username == "admin" and password == "admin123":
+            st.success("Login Successful")
+            st.session_state['admin_logged_in'] = True
+        else:
+            st.error("Invalid credentials")
 
-st.title("🤖 Fake Review Detector (BERT Model)")
+# ---------------- Main Title ---------------- #
+st.title("🕵️ Fake Review Detection System")
 
-if admin_logged_in:
-    st.success("Logged in as Admin")
-    st.subheader("Admin Dashboard")
-    if 'history' in st.session_state:
-        st.write("### Recent Predictions")
-        st.dataframe(st.session_state['history'])
-        st.download_button(
-            "Download History as CSV",
-            st.session_state['history'].to_csv(index=False),
-            "prediction_history.csv",
-            "text/csv"
-        )
+# ---------------- Admin Dashboard ---------------- #
+if st.session_state['admin_logged_in']:
+    st.subheader("📊 Admin Dashboard")
+    if len(st.session_state['history']) > 0:
+        st.write("### 🔁 Recent Predictions")
+        st.dataframe(st.session_state['history'].iloc[::-1].reset_index(drop=True))
+        st.download_button("📥 Download History as CSV", data=st.session_state['history'].to_csv(index=False),
+                           file_name="prediction_history.csv")
     else:
-        st.info("No prediction history yet.")
+        st.info("No predictions yet.")
+    st.button("Logout", on_click=lambda: st.session_state.update({'admin_logged_in': False}))
+
+# ---------------- User Input ---------------- #
 else:
-    input_text = st.text_area("Enter a product or hotel review")
-    if st.button("Analyze"):
-        with st.spinner("Analyzing using BERT..."):
-            result = classifier(input_text)[0]
-            label = result['label']
-            score = result['score']
-            prediction = "✅ Genuine Review" if label == "REAL" else "⚠️ Fake Review"
-            confidence = f"{score*100:.2f}%"
+    st.write("### ✍️ Enter a review to detect if it's fake or genuine")
+    input_text = st.text_area("Your review here...", height=150)
+    if st.button("Analyze Review"):
+        if input_text.strip() == "":
+            st.warning("Please enter a review to analyze.")
+        else:
+            cleaned = clean_text(input_text)
+            vec = vectorizer.transform([cleaned]).toarray()
+            result = model.predict(vec)[0]
+            proba = model.predict_proba(vec)[0]
+            prediction = "✅ Genuine Review" if result == 1 else "⚠️ Fake Review"
+            confidence = f"{np.max(proba)*100:.2f}%"
 
-            st.write("## 🎯 Prediction:")
-            st.success(prediction)
-            st.write(f"**Confidence Score:** {confidence}")
-            st.bar_chart({"Confidence": [score], "Uncertainty": [1 - score]})
+            # Result display
+            st.markdown(f"### 🎯 Prediction: {prediction}")
+            st.markdown(f"**🧠 Confidence Score:** `{confidence}`")
+            st.bar_chart({"Genuine": proba[1], "Fake": proba[0]})
 
-            # Save to history
-            if 'history' not in st.session_state:
-                st.session_state['history'] = pd.DataFrame(columns=["Review", "Prediction", "Confidence", "Timestamp"])
-            new_row = {
-                "Review": input_text,
-                "Prediction": prediction,
-                "Confidence": confidence,
-                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
+            # Store result
+            new_row = {"Review": input_text, "Prediction": prediction, "Confidence": confidence}
             st.session_state['history'] = pd.concat(
-                [st.session_state['history'], pd.DataFrame([new_row])], ignore_index=True)
+                [st.session_state['history'], pd.DataFrame([new_row])],
+                ignore_index=True
+            )
