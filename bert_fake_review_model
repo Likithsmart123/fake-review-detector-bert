@@ -1,0 +1,62 @@
+# app.py (BERT-powered Streamlit App)
+
+import streamlit as st
+from transformers import pipeline
+import pandas as pd
+import numpy as np
+import os
+
+# ---------------- Page Config ---------------- #
+st.set_page_config(page_title="Fake Review Detector (BERT)", page_icon="🔍")
+
+st.markdown("""
+    <h1 style='text-align: center;'>🤖 Fake Review Detector using BERT</h1>
+    <p style='text-align: center; color: gray;'>Enter any product or hotel review below to check if it's genuine or fake.</p>
+""", unsafe_allow_html=True)
+
+# ---------------- Load Model ---------------- #
+@st.cache_resource
+def load_pipeline():
+    return pipeline("text-classification", model="bert_fake_review_model", tokenizer="bert_fake_review_model")
+
+clf = load_pipeline()
+
+# ---------------- Session Storage ---------------- #
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+# ---------------- Login ---------------- #
+st.sidebar.header("🔐 Admin Login")
+username = st.sidebar.text_input("Username")
+password = st.sidebar.text_input("Password", type="password")
+admin_logged_in = username == "admin" and password == "admin123"
+
+# ---------------- Prediction ---------------- #
+if admin_logged_in:
+    st.success("🔓 Logged in as Admin")
+    st.subheader("📜 Prediction History")
+    if st.session_state.history:
+        df = pd.DataFrame(st.session_state.history)
+        st.dataframe(df)
+    else:
+        st.info("No predictions yet.")
+else:
+    input_text = st.text_area("✍️ Enter a Review to Analyze")
+    if st.button("Analyze Review"):
+        with st.spinner("Analyzing with BERT model..."):
+            output = clf(input_text)[0]
+            label = output['label']
+            score = output['score']
+
+            pred_text = "✅ Genuine Review" if label == "LABEL_1" else "⚠️ Fake Review"
+            st.markdown(f"### 🎯 Prediction: {pred_text}")
+            st.markdown(f"**Confidence Score:** `{score*100:.2f}%`")
+
+            st.bar_chart({"Genuine": score if label == "LABEL_1" else 1 - score,
+                          "Fake": 1 - score if label == "LABEL_1" else score})
+
+            st.session_state.history.append({
+                "Review": input_text,
+                "Prediction": pred_text,
+                "Confidence": f"{score*100:.2f}%"
+            })
