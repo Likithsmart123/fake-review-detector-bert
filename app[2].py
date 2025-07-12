@@ -1,8 +1,8 @@
-import nltk
-nltk.download('stopwords')
 import streamlit as st
 import pickle
 import re
+import nltk
+nltk.download('stopwords')
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 import numpy as np
@@ -70,7 +70,8 @@ if st.session_state['admin_logged_in']:
                            file_name="prediction_history.csv")
     else:
         st.info("No predictions yet.")
-    st.button("Logout", on_click=lambda: st.session_state.update({'admin_logged_in': False}))
+    if st.button("Logout"):
+        st.session_state['admin_logged_in'] = False
 
 # ---------------- User Input ---------------- #
 else:
